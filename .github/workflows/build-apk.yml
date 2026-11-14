@@ -1,7 +1,11 @@
+
 name: Build Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -11,10 +15,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unzip project
+      - name: Check and Unzip Project
         run: |
-          unzip FamilyInventory300_Android_Project.zip -d project
-          find project -name gradlew -type f -print
+          if [ ! -f FamilyInventory300_Android_Project.zip ]; then
+            echo "ERROR: Project ZIP file not found!"
+            exit 1
+          fi
+
+          mkdir -p project
+          unzip -q FamilyInventory300_Android_Project.zip -d project
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -22,14 +31,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Find Gradle Wrapper
+        run: |
+          GRADLEW=$(find "$GITHUB_WORKSPACE/project" -type f -name gradlew -print -quit)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew not found!"
+            find project -maxdepth 4 -type f
+            exit 1
+          fi
+
+          echo "GRADLEW=$GRADLEW" >> "$GITHUB_ENV"
+
       - name: Build APK
         run: |
-          chmod +x $(find project -name gradlew -type f | head -1)
-          cd $(dirname $(find project -name gradlew -type f | head -1))
-          ./gradlew assembleDebug
+          cd "$(dirname "$GRADLEW")"
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: FamilyInventory300-APK
           path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
